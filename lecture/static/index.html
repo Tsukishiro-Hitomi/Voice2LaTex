@@ -1,0 +1,418 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>上课语音助手</title>
+<style>
+:root {
+  --bg: #f6f7f9; --card: #fff; --ink: #1c1f23; --dim: #6b7280;
+  --line: #e3e6ea; --accent: #2563eb; --ok: #16a34a; --warn: #d97706;
+  --bad: #dc2626; --box: #fbfcfd;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #16181c; --card: #1f2227; --ink: #e6e8ea; --dim: #9aa3ad;
+    --line: #2e3238; --accent: #60a5fa; --ok: #4ade80; --warn: #fbbf24;
+    --bad: #f87171; --box: #191c20;
+  }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font: 15px/1.6 -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+.wrap { max-width: 880px; margin: 0 auto; padding: 20px 16px 60px; }
+h1 { font-size: 19px; margin: 0; font-weight: 600; }
+.top { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+.badge {
+  margin-left: auto; display: flex; align-items: center; gap: 8px;
+  font-variant-numeric: tabular-nums; font-size: 14px; color: var(--dim);
+}
+.dot { width: 9px; height: 9px; border-radius: 50%; background: var(--dim); }
+.dot.run { background: var(--ok); animation: pulse 1.6s infinite; }
+.dot.pause { background: var(--warn); }
+.dot.err { background: var(--bad); }
+@keyframes pulse { 0%,100% { opacity: 1 } 50% { opacity: .35 } }
+.card {
+  background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+  padding: 16px; margin-bottom: 14px;
+}
+.row { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; }
+label { display: block; font-size: 12px; color: var(--dim); margin-bottom: 4px; }
+input, select {
+  font: inherit; padding: 7px 9px; border: 1px solid var(--line); border-radius: 7px;
+  background: var(--box); color: var(--ink); min-width: 0;
+}
+input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+.grow { flex: 1 1 180px; }
+button {
+  font: inherit; font-weight: 500; padding: 8px 16px; border-radius: 7px;
+  border: 1px solid transparent; background: var(--accent); color: #fff; cursor: pointer;
+}
+button.ghost { background: transparent; border-color: var(--line); color: var(--ink); }
+button.warn { background: var(--warn); }
+button:disabled { opacity: .4; cursor: not-allowed; }
+.head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.head h2 { font-size: 14px; margin: 0; font-weight: 600; }
+.head .meta { margin-left: auto; font-size: 12px; color: var(--dim); font-variant-numeric: tabular-nums; }
+#box {
+  height: 340px; overflow-y: auto; background: var(--box); border: 1px solid var(--line);
+  border-radius: 8px; padding: 12px 14px; font-size: 14.5px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+#box .ln { margin: 0 0 5px; word-break: break-word; }
+#box .ts { color: var(--dim); margin-right: 8px; user-select: none; }
+#box .part { color: var(--dim); font-style: italic; }
+#box .empty { color: var(--dim); }
+#log, #vidLog, #noteLog {
+  max-height: 150px; overflow-y: auto; font-size: 12.5px; color: var(--dim);
+  font-family: ui-monospace, Menlo, Consolas, monospace; white-space: pre-wrap;
+}
+#vidLog:not(:empty), #noteLog:not(:empty) { margin-top: 10px; }
+.paths { font-size: 13px; margin-top: 10px; }
+.paths div { margin: 3px 0; word-break: break-all; }
+.paths code {
+  background: var(--box); border: 1px solid var(--line); border-radius: 5px;
+  padding: 1px 5px; font-size: 12.5px;
+}
+.err { color: var(--bad); font-size: 13.5px; margin-top: 8px; }
+.hint { font-size: 12.5px; color: var(--dim); margin-top: 8px; }
+#toast {
+  position: fixed; left: 50%; transform: translateX(-50%); bottom: 24px;
+  background: var(--bad); color: #fff; padding: 9px 16px; border-radius: 8px;
+  font-size: 13.5px; box-shadow: 0 4px 16px rgba(0,0,0,.2); display: none; z-index: 9;
+}
+.kbd { font-size: 12px; color: var(--dim); }
+</style>
+</head>
+<body>
+<div id="toast"></div>
+<div class="wrap">
+  <div class="top">
+    <h1>上课语音助手</h1>
+    <div class="badge"><span class="dot" id="dot"></span><span id="status">未开始</span>
+      <span id="clock">00:00</span></div>
+  </div>
+
+  <div class="card" id="setup">
+    <div class="row">
+      <div class="grow"><label>课程标题</label>
+        <input id="title" placeholder="计算机视觉 第3讲" style="width:100%"></div>
+      <div><label>术语表</label><select id="glossary"></select></div>
+      <div><label>音频源</label><select id="source">
+        <option value="mic">麦克风（线下课）</option>
+        <option value="loopback">系统音频（网课）</option>
+      </select></div>
+      <div class="grow" id="devWrap"><label>设备</label>
+        <select id="device" style="width:100%"></select></div>
+      <button id="btnStart">开始上课</button>
+    </div>
+    <div class="hint" id="setupHint"></div>
+  </div>
+
+  <div class="card">
+    <div class="head">
+      <h2>实时字幕</h2>
+      <span class="meta"><span id="count">0</span> 句</span>
+    </div>
+    <div id="box"><div class="empty">还没开始。填好上面的信息，点「开始上课」。</div></div>
+    <div class="row" style="margin-top:12px">
+      <button id="btnPause" class="ghost" disabled>暂停</button>
+      <button id="btnStop" class="ghost" disabled>结束</button>
+      <button id="btnCopy" class="ghost">复制全文</button>
+      <span class="kbd" style="margin-left:auto" id="pauseHint">课间按「暂停」，不录音也不识别</span>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="head"><h2>运行日志</h2></div>
+    <div id="log">等待开始…</div>
+  </div>
+
+  <div class="card">
+    <div class="head"><h2>生成笔记</h2><span class="meta" id="noteSess"></span></div>
+    <div class="row">
+      <div class="grow"><label>课件 PDF / PPTX（可选，会用来校正术语并插图）</label>
+        <input id="slides" placeholder="D:\课件\第3讲.pdf" style="width:100%"></div>
+      <div><label>已有 session</label><select id="sessSel"></select></div>
+      <button id="btnNotes">生成</button>
+    </div>
+    <div id="noteLog" class="hint"></div>
+    <div class="paths" id="notePaths"></div>
+  </div>
+
+  <div class="card">
+    <div class="head"><h2>课程视频 → 笔记</h2>
+      <span class="meta" id="vidMeta"></span></div>
+    <div class="row">
+      <div class="grow"><label>视频或录音文件（mp4 / mkv / flv / m4a … ffmpeg 能读就行）</label>
+        <input id="vidFile" placeholder="D:\录播\计算机视觉 第3讲.mp4" style="width:100%"></div>
+      <div><label>术语表</label><select id="vidGlossary"></select></div>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <div class="grow"><label>笔记标题（留空用文件名）</label>
+        <input id="vidTitle" placeholder="计算机视觉 第3讲" style="width:100%"></div>
+      <div class="grow"><label>课件 PDF / PPTX（可选）</label>
+        <input id="vidSlides" placeholder="D:\课件\第3讲.pdf" style="width:100%"></div>
+      <button id="btnVideo">生成笔记</button>
+    </div>
+    <div class="hint">整段跑完不是实时速度——12 分钟的课约 40 秒转写。任务在服务端跑，
+      关掉浏览器也不会中断，回来刷新页面就能看到进度。</div>
+    <div id="vidLog" class="hint"></div>
+    <div class="paths" id="vidPaths"></div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+let toastTimer = null;
+function toast(msg) {
+  const t = $('toast');
+  t.textContent = msg; t.style.display = 'block';
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.style.display = 'none', 4000);
+}
+const api = async (path, body) => {
+  const r = await fetch(path, body ? {
+    method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)
+  } : {});
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.statusText);
+  return r.json();
+};
+
+let since = 0, logSince = 0, noteLogSince = 0, lines = [], polling = null, notePolling = null;
+let devices = [], loopbackOk = false, autoScroll = true;
+
+$('box').addEventListener('scroll', () => {
+  const b = $('box');
+  autoScroll = b.scrollTop + b.clientHeight >= b.scrollHeight - 24;
+});
+
+function fillDevices() {
+  const src = $('source').value, sel = $('device');
+  sel.innerHTML = '';
+  const def = document.createElement('option');
+  def.value = ''; def.textContent = '系统默认';
+  sel.appendChild(def);
+  devices.filter(d => src === 'loopback' ? d.output : d.input).forEach(d => {
+    const o = document.createElement('option');
+    o.value = d.i; o.textContent = `${d.i}. ${d.name}`;
+    sel.appendChild(o);
+  });
+  $('setupHint').textContent = (src === 'loopback' && !loopbackOk)
+    ? '系统音频采集只在 Windows 上实现。当前系统请改用麦克风或录音文件。'
+    : '';
+}
+
+async function init() {
+  try {
+    const d = await api('/api/init');
+    devices = d.devices; loopbackOk = d.loopback_ok;
+    const gopts = '<option value="">默认术语表</option>' +
+      d.glossaries.map(g => `<option value="${g}">${g}</option>`).join('');
+    $('glossary').innerHTML = gopts;
+    $('vidGlossary').innerHTML = gopts;
+    $('sessSel').innerHTML = '<option value="">本次录制</option>' +
+      d.sessions.map(s => `<option value="${s}">${s}</option>`).join('');
+    fillDevices();
+  } catch (e) { $('setupHint').textContent = '初始化失败：' + e.message; }
+  render(await api('/api/state?since=0&log_since=0'));
+  if (['loading', 'running', 'finishing'].includes(lastState)) startPoll();
+  const v = await api('/api/video_state?log_since=0');   // 刷新后恢复视频任务进度
+  renderVid(v);
+  if (v.state === 'running') startVidPoll();
+}
+
+let lastState = 'idle';
+function render(s) {
+  lastState = s.state;
+  // 先把 partial 摘掉，否则新句子会追加到它后面，它就卡在列表中间了
+  const oldPart = document.getElementById('part');
+  if (oldPart) oldPart.remove();
+  if (s.sentences && s.sentences.length) {
+    if (lines.length === 0) $('box').innerHTML = '';
+    for (const x of s.sentences) {
+      const p = document.createElement('p');
+      p.className = 'ln';
+      p.innerHTML = `<span class="ts">${x.t}</span>`;
+      p.appendChild(document.createTextNode(x.text));
+      $('box').appendChild(p);
+      lines.push(`[${x.t}] ${x.text}`);
+    }
+    since += s.sentences.length;
+  }
+  if (s.partial) {
+    const part = document.createElement('p');
+    part.id = 'part'; part.className = 'ln part';
+    part.textContent = '▸ ' + s.partial;
+    $('box').appendChild(part);
+  }
+  if (autoScroll) $('box').scrollTop = $('box').scrollHeight;
+
+  if (s.log && s.log.length) {
+    const el = $('log');
+    if (logSince === 0) el.textContent = '';
+    el.textContent += s.log.join('\n') + '\n';
+    el.scrollTop = el.scrollHeight;
+    logSince = s.n_log;
+  }
+
+  $('count').textContent = s.n || 0;
+  $('clock').textContent = s.elapsed || '00:00';
+
+  const running = ['loading', 'running', 'finishing'].includes(s.state);
+  const dot = $('dot');
+  dot.className = 'dot' + (s.state === 'error' ? ' err'
+    : s.paused ? ' pause' : running ? ' run' : '');
+  $('status').textContent = s.state === 'error' ? '出错'
+    : s.state === 'loading' ? '加载模型…'
+    : s.paused ? '已暂停'
+    : s.state === 'running' ? '录制中'
+    : s.state === 'finishing' ? '收尾中…'
+    : s.state === 'done' ? '已结束' : '未开始';
+
+  $('btnStart').disabled = running;
+  $('btnPause').disabled = s.state !== 'running';
+  $('btnStop').disabled = !running;
+  $('btnPause').textContent = s.paused ? '继续' : '暂停';
+  $('btnPause').className = s.paused ? 'warn' : 'ghost';
+  for (const id of ['title', 'glossary', 'source', 'device']) $(id).disabled = running;
+  if (s.session) $('noteSess').textContent = s.session.split(/[\\/]/).pop();
+  if (s.error) {
+    let e = document.getElementById('runErr');
+    if (!e) { e = document.createElement('div'); e.id = 'runErr'; e.className = 'err';
+              $('setup').appendChild(e); }
+    e.textContent = s.error;
+  }
+  if (!running && polling) { clearInterval(polling); polling = null; }
+}
+
+function startPoll() {
+  if (polling) return;
+  polling = setInterval(async () => {
+    try { render(await api(`/api/state?since=${since}&log_since=${logSince}`)); }
+    catch (e) { /* 网络抖动就下个周期再试 */ }
+  }, 300);
+}
+
+$('source').onchange = fillDevices;
+
+$('btnStart').onclick = async () => {
+  $('btnStart').disabled = true;
+  const old = document.getElementById('runErr'); if (old) old.remove();
+  try {
+    await api('/api/start', {
+      title: $('title').value || '课堂',
+      source: $('source').value,
+      device: $('device').value === '' ? null : Number($('device').value),
+      glossary: $('glossary').value || null,
+    });
+    since = 0; logSince = 0; lines = [];
+    $('box').innerHTML = ''; $('log').textContent = '';
+    startPoll();
+  } catch (e) { toast('开始失败：' + e.message); $('btnStart').disabled = false; }
+};
+$('btnPause').onclick = async () => { try { await api('/api/pause', {}); } catch (e) { toast(e.message); } };
+let stopArmed = false, stopTimer = null;
+$('btnStop').onclick = async () => {
+  if (!stopArmed) {                     // 两步确认：避免上课时误点，也不用原生弹窗抢焦点
+    stopArmed = true;
+    $('btnStop').textContent = '确认结束？';
+    $('btnStop').className = 'warn';
+    clearTimeout(stopTimer);
+    stopTimer = setTimeout(() => {
+      stopArmed = false;
+      $('btnStop').textContent = '结束';
+      $('btnStop').className = 'ghost';
+    }, 4000);
+    return;
+  }
+  clearTimeout(stopTimer);
+  stopArmed = false;
+  $('btnStop').textContent = '结束'; $('btnStop').className = 'ghost';
+  try { await api('/api/stop', {}); } catch (e) { toast(e.message); }
+};
+$('btnCopy').onclick = async () => {
+  try { await navigator.clipboard.writeText(lines.join('\n')); $('btnCopy').textContent = '已复制'; }
+  catch { $('btnCopy').textContent = '复制失败'; }
+  setTimeout(() => $('btnCopy').textContent = '复制全文', 1400);
+};
+
+$('btnNotes').onclick = async () => {
+  $('btnNotes').disabled = true;
+  $('notePaths').innerHTML = ''; $('noteLog').textContent = ''; noteLogSince = 0;
+  try {
+    await api('/api/notes', {
+      session: $('sessSel').value || null,
+      slides: $('slides').value || null,
+      glossary: $('glossary').value || null,
+    });
+    if (notePolling) clearInterval(notePolling);
+    notePolling = setInterval(async () => {
+      const s = await api(`/api/notes_state?log_since=${noteLogSince}`);
+      if (s.log && s.log.length) {
+        $('noteLog').textContent += s.log.join('\n') + '\n';
+        noteLogSince = s.n_log;
+      }
+      if (s.state !== 'running') {
+        clearInterval(notePolling); notePolling = null;
+        $('btnNotes').disabled = false;
+        if (s.state === 'done' && s.result.tex) {
+          $('notePaths').innerHTML =
+            `<div>原稿 <code>${s.result.raw}</code></div>` +
+            `<div>笔记 <code>${s.result.md}</code></div>` +
+            `<div>LaTeX <code>${s.result.tex}</code></div>` +
+            `<div style="margin-top:6px">编译 <code>${s.result.compile}</code></div>`;
+        }
+      }
+    }, 600);
+  } catch (e) { toast('生成失败：' + e.message); $('btnNotes').disabled = false; }
+};
+
+let vidLogSince = 0, vidPolling = null;
+function renderVid(s) {
+  if (s.log && s.log.length) {
+    $('vidLog').textContent += s.log.join('\n') + '\n';
+    vidLogSince = s.n_log;
+  }
+  $('vidMeta').textContent = s.state === 'idle' ? ''
+    : `${s.phase}${s.n ? ' · ' + s.n + ' 句 · ' + s.elapsed : ''}`;
+  if (s.state !== 'running') {
+    if (vidPolling) { clearInterval(vidPolling); vidPolling = null; }
+    $('btnVideo').disabled = false;
+    if (s.state === 'done' && s.result.tex) {
+      $('vidPaths').innerHTML =
+        `<div>原稿 <code>${s.result.raw}</code></div>` +
+        `<div>笔记 <code>${s.result.md}</code></div>` +
+        `<div>LaTeX <code>${s.result.tex}</code></div>` +
+        `<div style="margin-top:6px">编译 <code>${s.result.compile}</code></div>`;
+    }
+  }
+}
+function startVidPoll() {
+  if (vidPolling) return;
+  $('btnVideo').disabled = true;
+  vidPolling = setInterval(async () => {
+    try { renderVid(await api(`/api/video_state?log_since=${vidLogSince}`)); }
+    catch (e) { /* 下个周期再试 */ }
+  }, 500);
+}
+$('btnVideo').onclick = async () => {
+  if (!$('vidFile').value.trim()) { toast('先填视频文件路径'); return; }
+  $('vidLog').textContent = ''; $('vidPaths').innerHTML = ''; vidLogSince = 0;
+  try {
+    await api('/api/video', {
+      file: $('vidFile').value.trim(),
+      title: $('vidTitle').value.trim() || null,
+      glossary: $('vidGlossary').value || null,
+      slides: $('vidSlides').value.trim() || null,
+    });
+    startVidPoll();
+  } catch (e) { toast('启动失败：' + e.message); }
+};
+
+init();
+</script>
+</body>
+</html>

@@ -1,0 +1,52 @@
+# ===== 语音助手配置 =====
+sessions_dir: sessions
+# 默认术语表（没用 --glossary 指定课程时使用）
+glossary: glossary.txt
+# 分课程的术语表放这里，用 --glossary 课程名 选择（不带 .txt）
+glossaries_dir: glossaries
+
+asr:
+  models_dir: models
+  # 实时字幕：中英双语流式 Paraformer（低延迟，允许有错）
+  streaming_model: sherpa-onnx-streaming-paraformer-bilingual-zh-en
+  # 句子定稿：SenseVoice（中英日韩粤，带 ITN，准确率高）
+  offline_model: sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17
+  vad_model: silero_vad.onnx
+  provider: cpu          # cpu | cuda（Windows 有显卡时可试，但建议 GPU 留给 LLM）
+  num_threads: 4
+  # 录音设备。留空 = 系统默认，但**系统默认不总是能用**——实测有的机器上录不到
+  # 东西，会安安静静录一整节课空白、日志里什么错都不报。`devices` 看编号，可以
+  # 写编号也可以写设备名的一段（`device: 1` 或 `device: "麦克风阵列"`）；写名字
+  # 更稳，编号会随插拔耳机而变。改完用 `check` 验一遍，它会印出实际用的是哪个。
+  device:
+  # VAD 断句：静音多久算一句结束 / 一句最长多久强制切。
+  # 教室里连续讲话时很难出现 0.35s 静音，多数句子会顶到 max 上限，
+  # 所以这个值直接决定时间戳粒度，不宜太大。
+  min_silence_duration: 0.35
+  min_speech_duration: 0.25
+  max_speech_duration: 15.0
+
+llm:
+  # 课上逐段清洗
+  refine_backend: deepseek
+  refine_model: deepseek-chat
+  # 课后整合成 LaTeX
+  compose_backend: deepseek
+  compose_model: deepseek-chat
+  deepseek_base_url: https://api.deepseek.com
+
+  # 想改成本地模型（隐私硬要求时）：把 refine_backend 换成 ollama、
+  # refine_model 换成你 ollama 里的模型名。代价是笔记质量下降、不会插图。
+  ollama_base_url: http://localhost:11434/v1
+  # 上面用本地后端时，本地不可用（没装 ollama / 模型没拉）自动退回云端，
+  # 避免整节课白跑。纯云端配置下这个开关不起作用。
+  refine_fallback_to_cloud: true
+  # DeepSeek V4 默认开思考链，输出 token 涨 3-5 倍，而成本几乎全在输出上。
+  # 实测关掉之后质量没有可见下降（插图、符号、术语、公式括号全对），但便宜 4 倍、快 6 倍。
+  # 只有整份笔记结构特别复杂、整合结果明显混乱时才值得打开。
+  thinking: false
+
+refine:
+  batch_seconds: 120       # 攒够约 2 分钟内容清洗一批
+  batch_min_sentences: 6   # 且至少这么多句
+  context_sentences: 3     # 批次间重叠的上下文句数

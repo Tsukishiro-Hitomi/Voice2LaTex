@@ -1,0 +1,13 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+models/
+sessions/
+*.tar.bz2
+.DS_Store
+
+# 术语表是个人课程内容，不提交。glossaries/example.txt 是讲格式的示例。
+glossary.txt
+glossaries/*
+!glossaries/example.txt

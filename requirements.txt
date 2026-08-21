@@ -1,0 +1,17 @@
+# Python 3.11+
+sherpa-onnx>=1.10
+sounddevice>=0.4.6
+numpy>=1.24
+openai>=1.30
+pyyaml>=6.0
+
+# Slide extraction, used by `notes --slides`.
+# NOTE: pymupdf is AGPL. Fine for personal use; swap in pypdf if that matters,
+# at the cost of losing whole-page rendering for vector-only slides.
+pymupdf>=1.24
+python-pptx>=1.0
+pillow>=10.0
+
+# Web interface, used by `serve`.
+fastapi>=0.110
+uvicorn[standard]>=0.27
